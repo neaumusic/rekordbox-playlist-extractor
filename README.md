@@ -1,7 +1,7 @@
 Rekordbox Playlist Extractor
 --
 
-Parses playlists from rekordbox.xml into folders of .m3u8 files
+Extracts all playlists from rekordbox.xml to a folder of .m3u8 files
 
 Useful for transferring tagged tracks / updated intelligent playlist tracks back into Apple Music
 
