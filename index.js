@@ -54,7 +54,7 @@ function parsePlaylist (playlist, pathPrefix) {
   console.log(`- ${outputDirectory}/${path}`);
   fs.writeFileSync(`${outputDirectory}/${path}`, [
     "#EXTM3U",
-    tracks.map(t => parseTrack(t))
+    tracks.sort((a, b) => new Date(a.getAttribute("DateAdded")) > new Date(b.getAttribute("DateAdded")) ? -1 : 1).map(t => parseTrack(t))
   ].join('\n'));
 }
 
