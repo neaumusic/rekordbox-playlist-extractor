@@ -1,4 +1,5 @@
 import fs from "fs";
+import moment from "moment";
 import { DOMParser } from "xmldom";
 import xpath from "xpath";
 
@@ -14,7 +15,8 @@ const root = xpath.select("/DJ_PLAYLISTS/PLAYLISTS/NODE[@Name='ROOT']", doc)[0];
 const folders = Array.from(xpath.select("./NODE[@Type='0']", root));
 const playlists = Array.from(xpath.select("./NODE[@Type='1']", root));
 const outputDirectory = "playlists";
-const folderDelimiter = "#";
+const folderDelimiter = " ";
+const runTime = moment().format("YYMMDDHHmmss");
 
 fs.rmSync(outputDirectory, { recursive: true, force: true });
 fs.mkdirSync(outputDirectory);
@@ -46,15 +48,16 @@ function parseFolder (folder, pathPrefix) {
 
 function parsePlaylist (playlist, pathPrefix) {
   const playlistName = playlist.getAttribute("Name").replace(/[/\\?%*:|"<>]/g, '-');
-  const path = `${pathPrefix}${folderDelimiter}${playlistName}.m3u8`;
+  const path = `${pathPrefix}${folderDelimiter}${playlistName} ${runTime}.m3u8`;
 
   const trackIds = Array.from(xpath.select("./TRACK", playlist)).map(t => t.getAttribute("Key"));
-  const tracks = trackIds.map(id => tracksCache[id]);
+  const tracks = trackIds.map(id => tracksCache[id])
+    .sort((a, b) => new Date(a.getAttribute("DateAdded")) > new Date(b.getAttribute("DateAdded")) ? -1 : 1);
 
   console.log(`- ${outputDirectory}/${path}`);
   fs.writeFileSync(`${outputDirectory}/${path}`, [
     "#EXTM3U",
-    tracks.sort((a, b) => new Date(a.getAttribute("DateAdded")) > new Date(b.getAttribute("DateAdded")) ? -1 : 1).map(t => parseTrack(t))
+    tracks.map(t => parseTrack(t))
   ].join('\n'));
 }
 
