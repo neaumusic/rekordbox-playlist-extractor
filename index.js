@@ -16,7 +16,7 @@ const folders = Array.from(xpath.select("./NODE[@Type='0']", root));
 const playlists = Array.from(xpath.select("./NODE[@Type='1']", root));
 const outputDirectory = "playlists";
 const folderDelimiter = " ";
-const runTime = moment().format("YYMMDDHHmmss");
+const runTime = moment().format("YYMMDDHHmmss"); // can be added to playlist path
 
 fs.rmSync(outputDirectory, { recursive: true, force: true });
 fs.mkdirSync(outputDirectory);
@@ -48,11 +48,11 @@ function parseFolder (folder, pathPrefix) {
 
 function parsePlaylist (playlist, pathPrefix) {
   const playlistName = playlist.getAttribute("Name").replace(/[/\\?%*:|"<>]/g, '-');
-  const path = `${pathPrefix}${folderDelimiter}${playlistName} ${runTime}.m3u8`;
+  const path = `${pathPrefix}${folderDelimiter}${playlistName}.m3u8`;
 
   const trackIds = Array.from(xpath.select("./TRACK", playlist)).map(t => t.getAttribute("Key"));
   const tracks = trackIds.map(id => tracksCache[id])
-    .sort((a, b) => new Date(a.getAttribute("DateAdded")) > new Date(b.getAttribute("DateAdded")) ? -1 : 1);
+    .sort((a, b) => Math.random() > 0.5 ? -1 : 1);
 
   console.log(`- ${outputDirectory}/${path}`);
   fs.writeFileSync(`${outputDirectory}/${path}`, [
