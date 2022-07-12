@@ -48,16 +48,17 @@ function parseFolder (folder, pathPrefix) {
 
 function parsePlaylist (playlist, pathPrefix) {
   const playlistName = playlist.getAttribute("Name").replace(/[/\\?%*:|"<>]/g, '-');
-  const path = `${pathPrefix}${folderDelimiter}${playlistName}.m3u8`;
+  const path = `${pathPrefix}${pathPrefix ? folderDelimiter : ''}${playlistName}.m3u8`;
 
   const trackIds = Array.from(xpath.select("./TRACK", playlist)).map(t => t.getAttribute("Key"));
   const tracks = trackIds.map(id => tracksCache[id])
+    // .sort((a, b) => new Date(a.getAttribute("DateAdded")) > new Date(b.getAttribute("DateAdded")) ? -1 : 1);
     .sort((a, b) => Math.random() > 0.5 ? -1 : 1);
 
   console.log(`- ${outputDirectory}/${path}`);
   fs.writeFileSync(`${outputDirectory}/${path}`, [
     "#EXTM3U",
-    tracks.map(t => parseTrack(t))
+    tracks.map(t => parseTrack(t)).join("")
   ].join('\n'));
 }
 
