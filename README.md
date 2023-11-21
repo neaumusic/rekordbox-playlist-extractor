@@ -27,3 +27,5 @@ You should have Node (which executes JS with the same V8 runtime as Chrome but o
 but if you don't, you can probably install it with `brew install node` as well.
 
 On Windows, I'm not sure how you can install yarn/node but it should be fairly simple
+
+Use Chat GPT if you have issues / aren't technical
