@@ -3,7 +3,9 @@ Rekordbox Playlist Extractor
 
 Extracts all playlists from rekordbox.xml to a folder of .m3u8 files
 
-Useful for transferring tagged tracks / updated intelligent playlist tracks back into Apple Music
+Very fast for transferring tagged tracks / updated intelligent playlist tracks back into Apple Music
+
+I advise to turn off icloud music (I remember having some issue with overriding same-name playlists)
 
 ---
 
