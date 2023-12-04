@@ -1,30 +1,24 @@
-Rekordbox Playlist Extractor
---
+## Rekordbox Playlist Extractor
 
-Extracts all playlists from rekordbox.xml to a folder of .m3u8 files
+Extracts playlists from rekordbox.xml to .m3u8 files
 
-Very fast for transferring tagged tracks / updated intelligent playlist tracks back into Apple Music
+- Useful for transferring tags etc into Apple Music
+  - Do not use iCloud Music (I remember caching / reconciliation issues on Apple's end)
+- Useful for shuffling playlist track order (set `shuffleTrackOrder` boolean to `true`)
 
-I advise to turn off icloud music (I remember having some issue with overriding same-name playlists)
+## Usage
 
----
+Export `"rekordbox.xml"` file into this directory and run `node index.js`
 
-Usage
---
+## Prerequisites
 
-You need to export a `"rekordbox.xml"` file into this directory and run `node index.js`
-
-
-Prerequisites
---
-You initially need to run `yarn` to install dependencies
+Just run `yarn` to install package.json node dependencies (limited to yarn.lock)
 
 If you don't have `yarn` you can install it via [Homebrew](brew.sh) which is where Apple was founded
 
 eg `brew install yarn`
 
-You should have Node (which executes JS with the same V8 runtime as Chrome but outside of a browser),
-but if you don't, you can probably install it with `brew install node` as well.
+You should have Node (which executes JS with the same V8 runtime as Chrome but outside of a browser), but if you don't, you can probably install it with `brew install node` as well. I actually recommend [Volta](https://volta.sh/) (dont install volta via brew) and then `volta install node`. This is just a tool that helps when different repositories require specific node versions, usually in enterprise environments. It can automatically change your node version when you `cd` to a directory with package.json "volta" node version specified
 
 On Windows, I'm not sure how you can install yarn/node but it should be fairly simple
 
