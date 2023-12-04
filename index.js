@@ -52,8 +52,8 @@ function parsePlaylist (playlist, pathPrefix) {
 
   const trackIds = Array.from(xpath.select("./TRACK", playlist)).map(t => t.getAttribute("Key"));
   const tracks = trackIds.map(id => tracksCache[id])
-    // .sort((a, b) => new Date(a.getAttribute("DateAdded")) > new Date(b.getAttribute("DateAdded")) ? -1 : 1);
-    .sort((a, b) => Math.random() > 0.5 ? -1 : 1);
+    .sort((a, b) => new Date(a.getAttribute("DateAdded")) > new Date(b.getAttribute("DateAdded")) ? -1 : 1);
+    // .sort((a, b) => Math.random() > 0.5 ? -1 : 1);
 
   console.log(`- ${outputDirectory}/${path}`);
   fs.writeFileSync(`${outputDirectory}/${path}`, [
