@@ -3,8 +3,16 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
-  "type": "module",
-  "dependencies": {
+  "type": "commonjs",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "postinstall": "ts-node src/index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/xmldom": "^0.1.34",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
     "xmldom": "^0.6.0",
     "xpath": "^0.0.32"
   }
