@@ -128,6 +128,9 @@ export interface PositionMarkAttributes {
   Start: string;
   End: string;
   Num: string;
+  Red: string;
+  Green: string;
+  Blue: string;
 }
 export interface PositionMark extends Element {
   tagName: "POSITION_MARK";
@@ -136,6 +139,25 @@ export interface PositionMark extends Element {
 export function isPositionMark(node: any): node is PositionMark {
   return isElement(node) && node.tagName === "POSITION_MARK";
 }
+
+export interface ColorsByCueNumber {
+  [cueNumber: PositionMarkAttributes["Num"]]: {
+    color: string;
+    cueColor: string;
+    trackColor: string;
+  };
+}
+// cant remember which of these color values are custom
+export const colorsByCueNumber: ColorsByCueNumber = {
+  0: { color: "pink", cueColor: "0xF870F8", trackColor: "0xFF007F" },
+  1: { color: "red", cueColor: "0xF80000", trackColor: "0xFF0000" },
+  2: { color: "orange", cueColor: "0xF8A030", trackColor: "0xFFA500" },
+  3: { color: "yellow", cueColor: "0xC3AF01", trackColor: "0xFFFF00" },
+  4: { color: "green", cueColor: "0x04DF03", trackColor: "0x00FF00" },
+  5: { color: "teal", cueColor: "0x00C0F8", trackColor: "0x25FDE9" },
+  6: { color: "blue", cueColor: "0x0050F8", trackColor: "0x0000FF" },
+  7: { color: "purple", cueColor: "0x9808F8", trackColor: "0x660099" },
+};
 
 /**
  * TRACK_REFERENCE

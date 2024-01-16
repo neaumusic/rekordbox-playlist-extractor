@@ -2,12 +2,12 @@
 
 Extracts playlists from rekordbox.xml to .m3u8 files
 
-- Useful for Soundiiz
 - Useful for transferring tags etc into Apple Music
   - Do not use iCloud Music (I remember caching / reconciliation issues on Apple's end)
 - Can shuffle playlist track orders (set `shouldShufflePlaylists` boolean to `true`)
+- Can map hot cues to track colors, and track colors to hot cues (at TotalTime - 0.01)
 
-Generates a `rekordbox-shuffled-genres.xml` (which can be used to re-import and shuffle track genres)
+Generates a `rekordbox-modified.xml` (which can be used to re-import and shuffle track genres)
 
 ## Usage
 
