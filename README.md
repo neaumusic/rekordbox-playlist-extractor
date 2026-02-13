@@ -3,6 +3,7 @@
 Extracts playlists from rekordbox.xml to .m3u8 files
 
 - Useful for transferring tags etc into Apple Music
+  - Make sure "Keep Music Media folder organized" is unchecked since you don't want it to move the files, and "iCloud Music Library" is unchecked since there are caching issues where the cloud version will override the latest local tracks/playlists.
   - Do not use iCloud Music (I remember caching / reconciliation issues on Apple's end)
 - Can shuffle playlist track orders (set `shouldShufflePlaylists` boolean to `true`)
 - Can map hot cues to track colors, and track colors to hot cues (at TotalTime - 0.01)
