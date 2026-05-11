@@ -12,9 +12,9 @@ Generates a `rekordbox-modified.xml` (which can be used to re-import and shuffle
 
 ## Usage
 
-Export `"rekordbox.xml"` file into the root directory and run `yarn`
+Export `"rekordbox.xml"` file into the root directory and run `yarn` (version 1.. this is an old repo)
 
-For troubleshooting, use Chat GPT or Cursor AI 😎 ✌️
+For troubleshooting, I highly recommend Cursor AI or lovable.dev
 
 If you get any error like 'invalid track' please let me know, but you can use `as Track` etc to override the type guards
 
