@@ -42,9 +42,7 @@ def assert_rekordbox_closed() -> None:
 def _is_rekordbox(name: str | None, exe: str | None) -> bool:
     if exe and _REKORDBOX_PROC.search(exe):
         return True
-    if name and _REKORDBOX_PROC.match(name):
-        return True
-    return False
+    return bool(name and _REKORDBOX_PROC.match(name))
 
 
 def assert_recent_backup(backups_dir: Path, max_age: timedelta = timedelta(days=1)) -> None:
