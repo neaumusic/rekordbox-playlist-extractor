@@ -8,7 +8,6 @@ Replaces the original TypeScript scripts (kept in `legacy-ts/` for reference).
 
 - **`extract-playlists`** — walk the playlist tree in `rekordbox.xml` and write every playlist (including smart playlists) to `playlists/*.m3u8`.
 - **`randomize-genres`** — copy the XML and overwrite every track's Genre with a random string. Re-import in rekordbox to bypass iOS rekordbox's lack of native shuffle (sort by Genre = random playback).
-- **`strip-hot-cues`** — delete hot cue rows from `master.db`. The baked-in track Colour stays. Useful for cleaning up legacy "Track Color" cues.
 - **`expand-dates`** — one-time migration: give every track a unique `DateAdded` timestamp at minute precision within its existing day. Required before `reorder`.
 - **`reorder`** — rewrite `DateAdded` on the tracks listed in an m3u8 so they sort in that order. Anchors to the input's existing date range when possible; expands symmetrically when not.
 - **`import-folder`** — add or re-stamp a folder of audio files with sequential `DateAdded` timestamps from now(). Choose sort order with `--sort name|mtime|ctime` and `--reverse`.
@@ -87,16 +86,6 @@ rbx randomize-genres
 # In rekordbox: File > Import (rekordbox-modified.xml). Sync to iOS. Sort by Genre = shuffle.
 ```
 
-### Strip baked-in "Track Color" hot cues
-
-```bash
-rbx backup
-rbx strip-hot-cues --comment "Track Color" --dry-run
-rbx strip-hot-cues --comment "Track Color"
-```
-
-The track's Colour itself is preserved — only the cue rows are deleted.
-
 ## Caveats
 
 - **Rekordbox 7 only**: `pyrekordbox` is tested against rekordbox 7.0.9 and earlier. A newer build may break the auto-key-extraction; pin pyrekordbox or wait for an update if so.
@@ -126,7 +115,6 @@ rbx/
     backup.py
     extract_playlists.py
     randomize_genres.py
-    strip_hot_cues.py
     expand_dates.py
     reorder.py
     import_folder.py

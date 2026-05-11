@@ -11,7 +11,6 @@ from rbx.commands import (
     import_folder,
     randomize_genres,
     reorder,
-    strip_hot_cues,
 )
 
 app = typer.Typer(
@@ -24,7 +23,6 @@ app = typer.Typer(
 app.command("backup")(backup.run)
 app.command("extract-playlists")(extract_playlists.run)
 app.command("randomize-genres")(randomize_genres.run)
-app.command("strip-hot-cues")(strip_hot_cues.run)
 app.command("expand-dates")(expand_dates.run)
 app.command("reorder")(reorder.run)
 app.command("import-folder")(import_folder.run)
