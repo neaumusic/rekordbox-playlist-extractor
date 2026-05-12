@@ -1,4 +1,4 @@
-"""rbx randomize-genres - assign every alive track a unique random Genre in master.db.
+"""rbx shuffle-genres - assign every alive track a unique random Genre in master.db.
 
 This is the iOS-rekordbox shuffle workaround: sorting by Genre on iOS becomes
 effectively a shuffle when every track has a distinct random-numeric Genre name.
@@ -70,7 +70,7 @@ def run(
     )
     console.print(f"Loaded [bold]{len(contents)}[/bold] alive tracks from master.db")
     if not contents:
-        console.print("[yellow]No tracks to randomize.[/yellow]")
+        console.print("[yellow]No tracks to shuffle.[/yellow]")
         return
 
     names = _permuted_names(len(contents), rng)
