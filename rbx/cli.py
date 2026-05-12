@@ -9,6 +9,7 @@ from rbx.commands import (
     expand_dates,
     extract_playlists,
     import_cmd,
+    purge_tombstones,
     randomize_genres,
     sort,
 )
@@ -26,6 +27,7 @@ app.command("randomize-genres")(randomize_genres.run)
 app.command("expand-dates")(expand_dates.run)
 app.command("sort")(sort.run)
 app.command("import")(import_cmd.run)
+app.command("purge-tombstones")(purge_tombstones.run)
 
 
 if __name__ == "__main__":
