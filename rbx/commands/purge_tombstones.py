@@ -1,10 +1,10 @@
-"""rbx purge-tombstones - hard-delete soft-deleted rows from djmdContent (+optionally djmdGenre).
+"""rbx purge-tombstones - hard-delete soft-deleted rows across master.db tables.
 
-Rekordbox never hard-deletes from `djmdContent` or `djmdGenre`. Removed tracks
-and orphaned genres stay around as "tombstones" (rb_local_deleted = 1) so cloud
-sync can reconcile deletions across devices. After enough churn this can balloon
-to tens of thousands of rows per table — which is harmless but implicated in
-flaky cloud-sync behavior on bloated libraries.
+Rekordbox never hard-deletes from `djmdContent`, `djmdGenre`, `djmdMyTag`, or
+`djmdSongMyTag`. Removed entries stay around as "tombstones" (rb_local_deleted
+= 1) so cloud sync can reconcile deletions across devices. After enough churn
+this can balloon to tens of thousands of rows per table — which is harmless
+but implicated in flaky cloud-sync behavior on bloated libraries.
 
 This command:
   1. Finds every tombstone row in djmdContent.
@@ -14,10 +14,15 @@ This command:
   4. (Optional, --include-genres) Hard-deletes every tombstoned djmdGenre row not
      referenced by any remaining alive djmdContent. djmdContent.GenreID is the
      only FK into djmdGenre. Genre tombstones are gated behind a flag because
-     `randomize-genres` reuses the same djmdGenre rows across re-shuffles, so
+     `shuffle-genres` reuses the same djmdGenre rows across re-shuffles, so
      normal operation doesn't accumulate genre tombstones. The flag is a
      one-time cleanup for legacy XML-round-trip residue or for the wave of
      tombstones created when track count crosses a width boundary.
+  5. (Optional, --include-mytags) Hard-deletes every tombstoned djmdSongMyTag
+     row, then every tombstoned djmdMyTag row. This is independent cleanup
+     from the djmdContent pass: Lexicon-style auto-tagging and a `clean-mytags`
+     sweep both leave huge piles of song-tag tombstones (often 10–20× the live
+     row count) that cloud sync no longer needs once peers have reconciled.
 
 WARNING — RUN ONLY ON A FULL CLOUD WIPE:
 This command is only safe immediately after you've wiped your rekordbox cloud
@@ -34,6 +39,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from sqlalchemy import func, select
 
 from rbx.db import open_db
 from rbx.safety import assert_recent_backup
@@ -77,6 +83,17 @@ def run(
             help=(
                 "Also hard-delete tombstoned djmdGenre rows not referenced by any alive "
                 "track. One-time cleanup; only safe immediately after a full cloud wipe."
+            ),
+        ),
+    ] = False,
+    include_mytags: Annotated[
+        bool,
+        typer.Option(
+            "--include-mytags",
+            help=(
+                "Also hard-delete tombstoned djmdSongMyTag and djmdMyTag rows. "
+                "Mainly cleans up the song-tag tombstone bloat left behind by Lexicon "
+                "auto-tagging or a previous `clean-mytags` run. Cloud-wipe-only."
             ),
         ),
     ] = False,
@@ -135,7 +152,22 @@ def run(
             f"Tombstoned djmdGenre rows safe to hard-delete: [bold]{genre_tombstones}[/bold]"
         )
 
-    if not tombstone_ids and not genre_tombstones:
+    song_mytag_tombstones = 0
+    mytag_tombstones = 0
+    if include_mytags:
+        song_mytag_tombstones = _count_tombstones(db, metadata, "djmdSongMyTag")
+        mytag_tombstones = _count_tombstones(db, metadata, "djmdMyTag")
+        console.print(
+            f"Tombstoned djmdSongMyTag rows: [bold]{song_mytag_tombstones}[/bold]; "
+            f"djmdMyTag rows: [bold]{mytag_tombstones}[/bold]"
+        )
+
+    if (
+        not tombstone_ids
+        and not genre_tombstones
+        and not song_mytag_tombstones
+        and not mytag_tombstones
+    ):
         console.print("[green]Nothing to do.[/green]")
         return
 
@@ -170,10 +202,26 @@ def run(
         deleted_genres = _delete_purgeable_genre_tombstones(db, metadata)
         console.print(f"  - djmdGenre: {deleted_genres}")
 
+    deleted_song_mytags = 0
+    deleted_mytags = 0
+    if include_mytags:
+        # Child table first (djmdSongMyTag has FK -> djmdMyTag.ID). Safe under
+        # either FK enforcement state; required if rekordbox ever turns FKs on.
+        if song_mytag_tombstones:
+            console.print("Deleting tombstones from djmdSongMyTag...")
+            deleted_song_mytags = _delete_tombstones(db, metadata, "djmdSongMyTag")
+            console.print(f"  - djmdSongMyTag: {deleted_song_mytags}")
+        if mytag_tombstones:
+            console.print("Deleting tombstones from djmdMyTag...")
+            deleted_mytags = _delete_tombstones(db, metadata, "djmdMyTag")
+            console.print(f"  - djmdMyTag: {deleted_mytags}")
+
     db.commit()
     msg = f"[green]Deleted {deleted_parents} content tombstones, {total_orphans} orphan child rows"
     if include_genres:
-        msg += f", and {deleted_genres} genre tombstones"
+        msg += f", {deleted_genres} genre tombstones"
+    if include_mytags:
+        msg += f", {deleted_song_mytags} song-mytag tombstones, {deleted_mytags} mytag tombstones"
     msg += "; committed.[/green]"
     console.print(msg)
 
@@ -210,6 +258,21 @@ def _alive_genre_ids_subq(metadata):
         .where(content_tbl.c.GenreID.isnot(None))
         .where(content_tbl.c.rb_local_deleted == 0)
     )
+
+
+def _count_tombstones(db, metadata, table_name: str) -> int:
+    """Count rows in `table_name` with rb_local_deleted=1."""
+    tbl = metadata.tables[table_name]
+    return db.session.execute(
+        select(func.count()).select_from(tbl).where(tbl.c.rb_local_deleted == 1)
+    ).scalar_one()
+
+
+def _delete_tombstones(db, metadata, table_name: str) -> int:
+    """Hard-delete every row in `table_name` with rb_local_deleted=1."""
+    tbl = metadata.tables[table_name]
+    result = db.session.execute(tbl.delete().where(tbl.c.rb_local_deleted == 1))
+    return result.rowcount or 0
 
 
 def _chunks(seq: list[str], n: int):
