@@ -6,11 +6,12 @@ import typer
 
 from rbx.commands import (
     backup,
+    clean_mytags,
     expand_dates,
     extract_playlists,
     import_cmd,
     purge_tombstones,
-    randomize_genres,
+    shuffle_genres,
     sort,
 )
 
@@ -23,11 +24,12 @@ app = typer.Typer(
 
 app.command("backup")(backup.run)
 app.command("extract-playlists")(extract_playlists.run)
-app.command("randomize-genres")(randomize_genres.run)
+app.command("shuffle-genres")(shuffle_genres.run)
 app.command("expand-dates")(expand_dates.run)
 app.command("sort")(sort.run)
 app.command("import")(import_cmd.run)
 app.command("purge-tombstones")(purge_tombstones.run)
+app.command("clean-mytags")(clean_mytags.run)
 
 
 if __name__ == "__main__":
