@@ -1,12 +1,26 @@
-"""rbx expand-dates - one-time migration that gives every track a unique
-DateAdded timestamp at minute (or second) precision within its existing day.
+"""rbx expand-dates - give every track a unique DateAdded timestamp at minute
+(or second) precision, preserving the natural (StockDate, created_at) order.
 
-Required as a foundation for `rbx reorder`. Idempotent: tracks that already have
-unique within-day timestamps at the chosen resolution are left untouched.
+Algorithm: stable-sort all tracks ascending by
+(snapped StockDate, created_at, ContentID), then sweep backward from the
+latest item. Each track keeps its snapped timestamp if it's strictly less
+than the previously-assigned one; otherwise it gets pushed back by one
+resolution step. Cascades may cross day boundaries — that's intentional,
+and keeps the most recent timestamps anchored exactly where rekordbox
+already had them.
+
+Why `created_at` as the within-day tiebreaker: rekordbox stores `StockDate`
+(the user-visible "Date Added") at date-only precision, so same-day cohorts
+need a tiebreaker. `ContentID` is essentially random — it doesn't follow
+import order. The SQLite row's `created_at` column has millisecond precision
+and matches the order rekordbox's UI actually displays. ContentID stays as a
+last-resort tiebreaker for the rare case of identical `created_at` values.
+
+Idempotent: tracks that already have unique timestamps at the chosen
+resolution are left untouched. Safe to re-run.
 
 NOTE on storage: rekordbox stores StockDate as a VARCHAR. We write
-'YYYY-MM-DD HH:MM:SS' which sorts lexicographically the way you want, and
-old plain-date rows naturally sort before any new HH:MM:SS rows on the same day.
+'YYYY-MM-DD HH:MM:SS' which sorts lexicographically the way you want.
 Verify visually in rekordbox after running on a backup.
 """
 
@@ -19,9 +33,9 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from rbx.dates import ExpandItem, Resolution, expand_within_day
+from rbx.dates import ExpandItem, Resolution, expand_unique_backward
 from rbx.db import open_db
-from rbx.safety import assert_recent_backup, assert_rekordbox_closed
+from rbx.safety import assert_recent_backup
 
 console = Console()
 
@@ -47,11 +61,9 @@ def run(
         typer.Option("--backups-dir", help="Where to look for recent backups."),
     ] = Path("backups"),
 ) -> None:
-    """Expand DateAdded so every track has a unique within-day timestamp."""
-    if not dry_run:
-        assert_rekordbox_closed()
-        if not no_backup_check:
-            assert_recent_backup(backups_dir)
+    """Expand DateAdded so every track has a unique timestamp."""
+    if not dry_run and not no_backup_check:
+        assert_recent_backup(backups_dir)
 
     db = open_db()
     contents = list(db.get_content())
@@ -63,10 +75,17 @@ def run(
         parsed = _parse_stockdate(c.StockDate)
         if parsed is None:
             continue
-        items.append(ExpandItem(id=str(c.ID), current=parsed, sort_key=int(c.ID)))
+        items.append(
+            ExpandItem(
+                id=str(c.ID),
+                current=parsed,
+                sort_key=int(c.ID),
+                tiebreaker_dt=c.created_at,
+            )
+        )
         by_id[str(c.ID)] = c
 
-    new_dates = expand_within_day(items, resolution=resolution)
+    new_dates = expand_unique_backward(items, resolution=resolution)
 
     changes = []
     for item_id, new_dt in new_dates.items():
@@ -79,6 +98,19 @@ def run(
         f"[bold]{len(changes)}[/bold] tracks need updates "
         f"({len(new_dates) - len(changes)} already unique at {resolution.value} resolution)"
     )
+    spillover = 0
+    for item_id, new_dt in new_dates.items():
+        original = _parse_stockdate(by_id[item_id].StockDate)
+        if original is None:
+            continue
+        original_day = original.date() if isinstance(original, datetime) else original
+        if new_dt.date() != original_day:
+            spillover += 1
+    if spillover:
+        console.print(
+            f"[yellow]{spillover}[/yellow] track(s) will be pushed into a "
+            f"different day to resolve cascading collisions."
+        )
 
     for c, new_str in changes[:5]:
         console.print(f"  - track {c.ID} ({c.Title!r}): {c.StockDate!r} -> {new_str!r}")
