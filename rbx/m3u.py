@@ -1,4 +1,4 @@
-"""m3u8 read/write helpers used by extract-playlists and reorder."""
+"""m3u8 read/write helpers used by extract-playlists and sort."""
 
 from __future__ import annotations
 

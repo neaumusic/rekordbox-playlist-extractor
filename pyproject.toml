@@ -1,7 +1,7 @@
 [project]
 name = "rbx"
 version = "0.1.0"
-description = "Rekordbox library CLI: playlist extraction, hot-cue stripping, DateAdded reordering, folder import."
+description = "Rekordbox library CLI: playlist extraction, hot-cue stripping, DateAdded sorting, folder import."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
