@@ -1,0 +1,3 @@
+[submodule "pyrekordbox"]
+	path = pyrekordbox
+	url = https://github.com/dylanljones/pyrekordbox.git

@@ -1,0 +1,16 @@
+---
+description: Where to look first in the pyrekordbox submodule
+globs: pyrekordbox/**
+alwaysApply: false
+---
+
+# Pyrekordbox Navigation
+
+When working in the `pyrekordbox` submodule, use this reading order first:
+
+1. `pyrekordbox/README.md` for project overview and supported formats.
+2. `pyrekordbox/docs/source/` for docs content used by ReadTheDocs.
+3. `pyrekordbox/pyrekordbox/` for package implementation.
+4. `pyrekordbox/tests/` for behavior examples and expected usage.
+
+Prefer reusing existing APIs from `pyrekordbox/pyrekordbox/` instead of adding wrappers in this repo unless integration requires it.
