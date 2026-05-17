@@ -16,7 +16,7 @@ from rbx.safety import assert_rekordbox_closed
 console = Console()
 
 
-def _resolve_db_path() -> Path | None:
+def resolve_db_path() -> Path | None:
     """Find master.db across rekordbox 7/6/5, in that order."""
     for section in ("rekordbox7", "rekordbox6", "rekordbox5"):
         conf = get_config(section)
@@ -42,7 +42,7 @@ def run(
     if not skip_running_check:
         assert_rekordbox_closed()
 
-    db_path = _resolve_db_path()
+    db_path = resolve_db_path()
     if db_path is None:
         console.print("[red]Could not locate a rekordbox installation (5/6/7).[/red]")
         raise typer.Exit(code=1)

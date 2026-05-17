@@ -29,9 +29,31 @@ Run `rbx backup` first.
 when cloud keeps resurrecting MyTag rows and you need to tombstone while the app
 is running.
 
+### Restore
+
+Backups are raw `master.db` copies (not rekordbox's own `.backup` bundle format),
+so restoring is just a reverse file copy:
+
+```bash
+rbx restore --list                 # see what's available
+rbx restore --dry-run              # preview restoring the newest backup
+rbx restore                        # restore the newest backup (with confirmation)
+rbx restore --from 2026-05-17_12-39-36
+```
+
+The live `master.db` (and `-wal`/`-shm`) get moved aside as
+`master.db.replaced-<timestamp>` instead of deleted, so a botched restore is
+recoverable. Delete those once rekordbox reopens cleanly.
+
+**Cloud caveat:** if you've used rekordbox Cloud Library Sync since the backup,
+opening rekordbox after a local restore may let cloud push its newer state back
+over the restored library. For a real disaster scenario, sign out of cloud
+before launching rekordbox post-restore.
+
 ## Commands
 
 - **`backup`** — snapshot `master.db` (+ WAL/SHM) to `./backups/<timestamp>/`.
+- **`restore [--from <timestamp>]`** — copy a backup back over rekordbox's live `master.db`. Defaults to the newest backup; pass `--list` to see what's available, `--dry-run` to preview, `--from <name-or-path>` to pick one. Live files are moved aside as `master.db.replaced-<timestamp>` rather than deleted.
 - **`extract-playlists`** — dump every playlist from `rekordbox.xml` to `playlists/*.m3u8`.
 - **`expand-dates [--target ...]`** — give every track a unique value in the chosen field, preserving natural (StockDate, created_at) order. Default target `stockdate` is the original minute-precision DateAdded behavior. `--target year` assigns sequential `ReleaseYear` (newest=0). `--target genre`/`--target album` assign zero-padded numeric names. Idempotent.
 - **`sort --from <m3u8> [--target ...]`** — rewrite a chosen field so tracks sort in the m3u8's order. Default target `stockdate` (minute precision; iOS-broken after sync). `--target year` is the iOS-friendly recommendation. Last line of m3u8 = anchor (newest).

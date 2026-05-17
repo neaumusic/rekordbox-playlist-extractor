@@ -11,6 +11,7 @@ from rbx.commands import (
     extract_playlists,
     import_cmd,
     purge_tombstones,
+    restore,
     shuffle,
     sort,
 )
@@ -23,6 +24,7 @@ app = typer.Typer(
 )
 
 app.command("backup")(backup.run)
+app.command("restore")(restore.run)
 app.command("extract-playlists")(extract_playlists.run)
 app.command("shuffle")(shuffle.run)
 # Pre-multi-target name kept as an alias so existing muscle memory still works.
