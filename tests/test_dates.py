@@ -6,10 +6,14 @@ from datetime import date, datetime, timedelta
 
 from rbx.dates import (
     ExpandItem,
+    IntSpace,
+    PaddedIntSpace,
     ReorderItem,
     Resolution,
     expand_unique_backward,
+    expand_unique_backward_field,
     pack_for_sort,
+    pack_for_sort_field,
 )
 
 
@@ -267,9 +271,7 @@ class TestPackForSort:
     def test_cascade_preserves_relative_order_among_cascaded_items(self) -> None:
         """Two non-m3u items both inside the m3u window — both must cascade,
         and the one originally later in time must land at a later final slot."""
-        m3u = [
-            ReorderItem(f"m_{i}", datetime(2024, 6, 15, 12, 4)) for i in range(5)
-        ]
+        m3u = [ReorderItem(f"m_{i}", datetime(2024, 6, 15, 12, 4)) for i in range(5)]
         others = [
             ExpandItem("later", datetime(2024, 6, 15, 12, 3), sort_key=1),
             ExpandItem("earlier", datetime(2024, 6, 15, 12, 1), sort_key=2),
@@ -281,9 +283,7 @@ class TestPackForSort:
         """When two cascaded non-m3u items share a date-only `current`, their
         relative order in the cascade must follow `tiebreaker_dt` (the rekordbox
         UI order), not `sort_key`."""
-        m3u = [
-            ReorderItem(f"m_{i}", date(2024, 6, 15)) for i in range(3)
-        ]
+        m3u = [ReorderItem(f"m_{i}", date(2024, 6, 15)) for i in range(3)]
         others = [
             ExpandItem(
                 "low_sort_late_create",
@@ -346,10 +346,7 @@ class TestPackForSort:
     def test_all_assigned_dates_are_globally_unique(self) -> None:
         m3u = [ReorderItem(f"m{i}", datetime(2024, 6, 15, 12, 0)) for i in range(20)]
         base = datetime(2024, 6, 15, 11, 0)
-        others = [
-            ExpandItem(f"o{i}", base + timedelta(minutes=i), sort_key=i)
-            for i in range(50)
-        ]
+        others = [ExpandItem(f"o{i}", base + timedelta(minutes=i), sort_key=i) for i in range(50)]
         result = pack_for_sort(m3u, others)
         final_dates: list[datetime] = list(result.values())
         for it in others:
@@ -367,3 +364,238 @@ class TestPackForSort:
         )
         assert result["anchor"] == datetime(2024, 6, 15, 0, 0)
         assert result["first"] == datetime(2024, 6, 14, 23, 59)
+
+
+class TestDayResolution:
+    """``Resolution.DAY`` is the iOS-honored option for stockdate sort: each
+    cascade step is exactly one day, so two same-day collisions produce
+    different YYYY-MM-DD strings and iOS doesn't fall back to artist sort."""
+
+    def test_expand_cascades_at_one_day_step(self) -> None:
+        items = [
+            ExpandItem("a", date(2024, 6, 15), sort_key=10),
+            ExpandItem("b", date(2024, 6, 15), sort_key=20),
+            ExpandItem("c", date(2024, 6, 15), sort_key=30),
+        ]
+        result = expand_unique_backward(items, resolution=Resolution.DAY)
+        assert result["c"] == datetime(2024, 6, 15, 0, 0)
+        assert result["b"] == datetime(2024, 6, 14, 0, 0)
+        assert result["a"] == datetime(2024, 6, 13, 0, 0)
+
+    def test_pack_for_sort_cascades_non_m3u_at_day_step(self) -> None:
+        m3u = [
+            ReorderItem("m_a", datetime(2024, 6, 15)),
+            ReorderItem("m_b", datetime(2024, 6, 16)),
+        ]
+        others = [
+            ExpandItem("collider", datetime(2024, 6, 16), sort_key=1),
+        ]
+        result = pack_for_sort(m3u, others, resolution=Resolution.DAY)
+        assert result["m_b"] == datetime(2024, 6, 16, 0, 0)
+        assert result["m_a"] == datetime(2024, 6, 15, 0, 0)
+        assert result["collider"] == datetime(2024, 6, 14, 0, 0)
+
+    def test_day_resolution_anchor_snaps_to_midnight(self) -> None:
+        result = pack_for_sort(
+            [ReorderItem("a", datetime(2024, 6, 15, 14, 23, 45))],
+            [],
+            resolution=Resolution.DAY,
+        )
+        assert result["a"] == datetime(2024, 6, 15, 0, 0)
+
+    def test_day_resolution_consecutive_collisions_cross_month(self) -> None:
+        items = [ExpandItem(f"id{i}", date(2024, 3, 1), sort_key=i) for i in range(40)]
+        result = expand_unique_backward(items, resolution=Resolution.DAY)
+        assert len(set(result.values())) == 40
+        assert result["id39"] == datetime(2024, 3, 1, 0, 0)
+        assert result["id0"] == datetime(2024, 3, 1, 0, 0) - timedelta(days=39)
+
+
+class TestIntSpace:
+    """``IntSpace`` powers --target year. Convention: lower value = newer.
+    M3u anchor fixed at min_value (0). Overflow past max_value (9999) all
+    share the cap output."""
+
+    def test_anchor_fixed_at_min_value_regardless_of_m3u_current(self) -> None:
+        """IntSpace ignores the last m3u item's current value; anchor is fixed
+        at min_value so the newest m3u track always lands at year 0."""
+        space = IntSpace()
+        m3u = [
+            ReorderItem("first", 5000),
+            ReorderItem("middle", 1234),
+            ReorderItem("last", 9999),
+        ]
+        result = pack_for_sort_field(m3u, [], space)
+        assert result["last"] == 0
+        assert result["middle"] == 1
+        assert result["first"] == 2
+
+    def test_non_m3u_outside_window_is_not_disturbed(self) -> None:
+        """Real ReleaseYear values like 1985, 2024 don't collide with the
+        small m3u block, so they keep their existing year unchanged."""
+        space = IntSpace()
+        m3u = [ReorderItem(f"m{i}", 0) for i in range(50)]
+        others = [
+            ExpandItem("vintage", 1985, sort_key=1),
+            ExpandItem("recent", 2024, sort_key=2),
+        ]
+        result = pack_for_sort_field(m3u, others, space)
+        assert "vintage" not in result
+        assert "recent" not in result
+
+    def test_non_m3u_collision_cascades_older(self) -> None:
+        """A non-m3u track inside the m3u year window cascades older (higher
+        year) until it finds a free slot."""
+        space = IntSpace()
+        m3u = [ReorderItem(f"m{i}", 0) for i in range(5)]
+        others = [
+            ExpandItem("collider", 2, sort_key=1),
+        ]
+        result = pack_for_sort_field(m3u, others, space)
+        assert result["collider"] == 5
+
+    def test_overflow_clamps_at_max_value(self) -> None:
+        """M3u block beyond the cap stacks at max_value (overflow share-bucket)."""
+        space = IntSpace(min_value=0, max_value=5)
+        m3u = [ReorderItem(f"m{i}", 0) for i in range(10)]
+        result = pack_for_sort_field(m3u, [], space)
+        assert result["m9"] == 0
+        assert result["m8"] == 1
+        assert result["m4"] == 5
+        assert result["m3"] == 5
+        assert result["m2"] == 5
+        assert result["m1"] == 5
+        assert result["m0"] == 5
+
+    def test_overflow_at_9999_for_huge_m3u(self) -> None:
+        """The user's 'colliding at 9999' guarantee for >10K m3u tracks."""
+        space = IntSpace(min_value=0, max_value=9999)
+        m3u = [ReorderItem(f"m{i}", 0) for i in range(10_500)]
+        result = pack_for_sort_field(m3u, [], space)
+        assert result["m10499"] == 0
+        assert result["m9500"] == 999
+        assert result["m499"] == 9999
+        assert result["m0"] == 9999
+
+    def test_non_m3u_with_year_above_cap_clamps_to_cap(self) -> None:
+        """Non-m3u track with ReleaseYear above cap snaps to cap (no cascade)."""
+        space = IntSpace(min_value=0, max_value=9999)
+        m3u = [ReorderItem("m", 0)]
+        others = [ExpandItem("future", 12345, sort_key=1)]
+        result = pack_for_sort_field(m3u, others, space)
+        assert result["m"] == 0
+        assert result.get("future", 12345) == 12345 or result.get("future") == 9999
+
+    def test_expand_unique_backward_field_preserves_year_order(self) -> None:
+        """Generic expand for years: items keep their existing year unless
+        a strictly older item already claimed the same slot."""
+        space = IntSpace()
+        items = [
+            ExpandItem("a", 1985, sort_key=1),
+            ExpandItem("b", 1985, sort_key=2),
+            ExpandItem("c", 2024, sort_key=3),
+        ]
+        result = expand_unique_backward_field(items, space)
+        assert result["c"] == 2024
+        assert result["b"] == 1985
+        assert result["a"] == 1986
+
+    def test_pack_for_sort_field_with_int_is_idempotent(self) -> None:
+        """Same inputs (m3u updated to its assigned years; non-m3u currents
+        unchanged) must produce the same output on a re-run."""
+        space = IntSpace()
+        m3u = [ReorderItem(f"m{i}", 0) for i in range(20)]
+        others = [
+            ExpandItem("o1", 1985, sort_key=1),
+            ExpandItem("o2", 5, sort_key=2),
+        ]
+        first = pack_for_sort_field(m3u, others, space)
+        m3u_after = [ReorderItem(it.id, first[it.id]) for it in m3u]
+        second = pack_for_sort_field(m3u_after, others, space)
+        assert first == second
+
+
+class TestPaddedIntSpace:
+    """``PaddedIntSpace`` powers --target genre/album. Lexicographic ordering
+    of zero-padded strings matches numeric ordering."""
+
+    def test_emits_zero_padded_strings_at_fixed_width(self) -> None:
+        space = PaddedIntSpace(width=4)
+        m3u = [ReorderItem(f"m{i}", 0) for i in range(5)]
+        result = pack_for_sort_field(m3u, [], space)
+        assert result["m4"] == "0000"
+        assert result["m3"] == "0001"
+        assert result["m2"] == "0002"
+        assert result["m1"] == "0003"
+        assert result["m0"] == "0004"
+
+    def test_lexicographic_order_matches_numeric_for_padded(self) -> None:
+        space = PaddedIntSpace(width=3)
+        m3u = [ReorderItem(f"m{i}", 0) for i in range(50)]
+        result = pack_for_sort_field(m3u, [], space)
+        ordered = sorted(result.values())
+        numeric = sorted(int(v) for v in result.values())
+        assert [int(v) for v in ordered] == numeric
+
+    def test_non_numeric_genre_names_are_excluded_by_caller(self) -> None:
+        """PaddedIntSpace.snap_axis only accepts ints / numeric strings.
+        Caller is expected to pre-filter; this test just documents that real
+        non-numeric names raise so the caller knows to filter."""
+        space = PaddedIntSpace(width=4)
+        try:
+            space.snap_axis("Acid House")
+        except (TypeError, ValueError):
+            return
+        msg = "expected TypeError / ValueError on non-numeric"
+        raise AssertionError(msg)
+
+    def test_numeric_string_collision_cascades_at_padding(self) -> None:
+        """If a non-m3u track happens to have a numeric Genre name in our
+        namespace (e.g. from a prior shuffle run), it cascades older."""
+        space = PaddedIntSpace(width=2)
+        m3u = [ReorderItem(f"m{i}", 0) for i in range(5)]
+        others = [ExpandItem("from_prior_shuffle", "02", sort_key=1)]
+        result = pack_for_sort_field(m3u, others, space)
+        assert result["from_prior_shuffle"] == "05"
+
+    def test_default_max_value_matches_width_capacity(self) -> None:
+        """width=3 implies max_value=999 (10**3 - 1) by default."""
+        space = PaddedIntSpace(width=3)
+        assert space.max_value == 999
+
+
+class TestExpandToFieldPattern:
+    """The ``expand-dates --target year/genre/album`` flow is a thin call to
+    ``pack_for_sort_field`` with the entire StockDate-sorted library as the
+    m3u block. These tests pin the pattern so changes to either side stay
+    compatible with the expand command's expectations."""
+
+    def test_full_library_as_m3u_assigns_sequential_years(self) -> None:
+        """With every alive track passed in StockDate order (oldest first),
+        the newest gets year 0 and each older track gets year+1."""
+        space = IntSpace(min_value=0, max_value=9999)
+        items_oldest_first = [ReorderItem(f"t{i}", current=0) for i in range(10)]
+        result = pack_for_sort_field(items_oldest_first, [], space)
+        assert result["t9"] == 0
+        assert result["t8"] == 1
+        assert result["t0"] == 9
+
+    def test_full_library_overflow_at_9999_for_huge_library(self) -> None:
+        """Library beyond the 0..9999 capacity collapses oldest tracks at 9999."""
+        space = IntSpace(min_value=0, max_value=9999)
+        items = [ReorderItem(f"t{i}", current=0) for i in range(10_500)]
+        result = pack_for_sort_field(items, [], space)
+        assert result["t10499"] == 0
+        assert result["t499"] == 9999
+        assert result["t0"] == 9999
+
+    def test_full_library_as_m3u_assigns_padded_genre_names(self) -> None:
+        """Genre/album expand: zero-padded numerics, lexicographic sort
+        matches numeric sort."""
+        space = PaddedIntSpace(width=3)
+        items = [ReorderItem(f"t{i}", current=0) for i in range(5)]
+        result = pack_for_sort_field(items, [], space)
+        assert result["t4"] == "000"
+        assert result["t3"] == "001"
+        assert result["t0"] == "004"
+        assert sorted(result.values()) == ["000", "001", "002", "003", "004"]
