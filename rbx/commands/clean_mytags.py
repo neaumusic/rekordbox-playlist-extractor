@@ -125,9 +125,34 @@ def run(
             ),
         ),
     ] = False,
+    force_cloud_usn: Annotated[
+        bool,
+        typer.Option(
+            "--force-cloud-usn",
+            help=(
+                "Before tombstoning, bump the local USN counter (`localUpdateCount`) "
+                "above the cloud's `lastUpdateCount` so each new tombstone gets a "
+                "rb_local_usn higher than any value the cloud has stamped on its alive "
+                "version of the row. Use this when prior tombstoning attempts have been "
+                "reverted by cloud sync (i.e. the cloud's per-row `usn` is way ahead of "
+                "your local USN, so the cloud server treats your changes as stale)."
+            ),
+        ),
+    ] = False,
     no_backup_check: Annotated[
         bool,
         typer.Option("--no-backup-check", help="Skip the recent-backup safety check."),
+    ] = False,
+    allow_rekordbox_open: Annotated[
+        bool,
+        typer.Option(
+            "--allow-rekordbox-open",
+            help=(
+                "Bypass the rekordbox-running safety check and attempt to write while "
+                "rekordbox is open. Use only when normal closed-app tombstoning keeps "
+                "getting reverted by cloud sync."
+            ),
+        ),
     ] = False,
     backups_dir: Annotated[
         Path,
@@ -162,7 +187,7 @@ def run(
 
     from pyrekordbox.db6 import tables
 
-    db = open_db()
+    db = open_db(allow_rekordbox_open=allow_rekordbox_open)
 
     # Snapshot every alive djmdMyTag row in one pass; we'll partition it in-memory.
     # Tombstoned rows (rb_local_deleted=1) are skipped — they're cloud-sync
@@ -226,6 +251,14 @@ def run(
                 defaults_to_create.append((cid, seq, name))
                 continue
             fixes: dict[str, object] = {}
+            # If the row is a scrubbed tombstone (rb_local_deleted=1, Name/Seq NULLed
+            # by a prior _tombstone(scrub_data=True)), restoring rb_local_deleted=0
+            # alone leaves a malformed alive row. Restore the canonical Name/Seq and
+            # un-tombstone rb_data_status too.
+            if row.Name != name:
+                fixes["Name"] = name
+            if row.Seq != seq:
+                fixes["Seq"] = seq
             if row.Attribute != _CATEGORY_ATTRIBUTE:
                 fixes["Attribute"] = _CATEGORY_ATTRIBUTE
             if row.ParentID != "root":
@@ -234,6 +267,8 @@ def run(
                 fixes["UUID"] = cid
             if row.rb_local_deleted != 0:
                 fixes["rb_local_deleted"] = 0
+            if row.rb_data_status != _ALIVE_DATA_STATUS:
+                fixes["rb_data_status"] = _ALIVE_DATA_STATUS
             if fixes:
                 defaults_to_repair.append((row, fixes))
 
@@ -258,8 +293,13 @@ def run(
         return
 
     if dry_run:
+        if force_cloud_usn:
+            _print_force_cloud_usn_plan(db, tag_ids_to_delete, song_links_to_delete)
         console.print("\n[yellow]--dry-run: nothing committed[/yellow]")
         return
+
+    if force_cloud_usn:
+        _bump_local_usn_above_cloud(db, n_pending=len(tag_ids_to_delete) + len(song_links_to_delete))
 
     # Tombstoning order doesn't actually matter for FK correctness (the rows
     # stay in the table, just with rb_local_deleted=1), but we follow the same
@@ -307,7 +347,7 @@ def run(
             for col, val in fixes.items():
                 setattr(row, col, val)
 
-    db.commit()
+    _commit(db, allow_rekordbox_open=allow_rekordbox_open)
     msg = (
         f"[green]Tombstoned {len(song_links_to_delete)} song-tag links and "
         f"{len(tag_ids_to_delete)} MyTag rows"
@@ -390,6 +430,71 @@ def _print_plan(
         for row, fixes in defaults_to_repair:
             fix_str = ", ".join(f"{k}={v!r}" for k, v in fixes.items())
             console.print(f"  - ID={row.ID:<5} Name={row.Name!r}  set: {fix_str}")
+
+
+def _bump_local_usn_above_cloud(db, *, n_pending: int) -> None:
+    """Raise ``localUpdateCount`` so subsequent rb_local_usn assignments outrank the cloud's USN.
+
+    Rekordbox's cloud sync compares each row's USN to its server-side counterpart when
+    deciding whether to accept a local change. The cloud's authoritative max USN is
+    stored in the ``lastUpdateCount`` agentRegistry row. If our local USN is below it,
+    the cloud server can treat our pushes as based on stale state and silently revert
+    them on next merge.
+
+    Bumping ``localUpdateCount`` to ``lastUpdateCount + buffer`` (with ``buffer`` large
+    enough to also cover the pending tombstones) means each new tombstone's
+    ``rb_local_usn`` exceeds anything the cloud has stamped on that row, so the cloud
+    server should accept the deletion as the new latest state.
+
+    This is a sledgehammer; only call it when ordinary tombstoning has been observed
+    to revert. Bumping the USN doesn't damage anything on its own — the counter is
+    monotonic and rekordbox will keep incrementing from wherever we land.
+    """
+    local_reg = db.get_agent_registry(registry_id="localUpdateCount")
+    cloud_reg = db.get_agent_registry(registry_id="lastUpdateCount")
+    local_usn = local_reg.int_1 or 0
+    cloud_usn = cloud_reg.int_1 or 0
+    # Buffer covers the pending tombstones plus headroom for future cloud touches that
+    # might land between our commit and the next rekordbox open.
+    target = cloud_usn + n_pending + 1000
+    if local_usn >= target:
+        console.print(
+            f"[dim]localUpdateCount ({local_usn}) already exceeds cloud target ({target}); "
+            "skipping bump.[/dim]"
+        )
+        return
+    console.print(
+        f"[bold]Bumping localUpdateCount[/bold]: {local_usn} → {target} "
+        f"(cloud lastUpdateCount={cloud_usn}, pending={n_pending}, +1000 buffer)"
+    )
+    with db.registry.disabled():
+        local_reg.int_1 = target
+
+
+def _print_force_cloud_usn_plan(db, tag_ids_to_delete, song_links_to_delete) -> None:
+    local_reg = db.get_agent_registry(registry_id="localUpdateCount")
+    cloud_reg = db.get_agent_registry(registry_id="lastUpdateCount")
+    local_usn = local_reg.int_1 or 0
+    cloud_usn = cloud_reg.int_1 or 0
+    n = len(tag_ids_to_delete) + len(song_links_to_delete)
+    target = cloud_usn + n + 1000
+    console.print(
+        f"\n[bold]--force-cloud-usn[/bold]: would bump localUpdateCount {local_usn} → {target} "
+        f"(cloud lastUpdateCount={cloud_usn})"
+    )
+
+
+def _commit(db, *, allow_rekordbox_open: bool) -> None:
+    """Commit with pyrekordbox safety checks unless explicit override was requested."""
+    if not allow_rekordbox_open:
+        db.commit()
+        return
+
+    # pyrekordbox blocks db.commit() whenever rekordbox is running; this explicit
+    # escape hatch mirrors commit(autoinc=True) but skips only that process check.
+    db.registry.autoincrement_local_update_count(set_row_usn=True)
+    db.session.commit()
+    db.registry.clear_buffer()
 
 
 def _chunks(seq: list[str], n: int):
